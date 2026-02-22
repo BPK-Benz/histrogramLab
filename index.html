@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Histogram Lab (Web Interactive)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 18px; line-height: 1.35; }
+    h1 { margin: 0 0 8px 0; font-size: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+    #rightPanel { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; font-size: 12px;}
+
+    .card { border: 1px solid rgba(127,127,127,.35); border-radius: 10px; padding: 12px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 680px) { .row { grid-template-columns: 1fr; } }
+    canvas { width: 100%; height: auto; border: 1px solid rgba(127,127,127,.25); border-radius: 8px; background: rgba(127,127,127,.05); min-height: 160px; }
+    label { display: block; font-size: 13px; margin: 10px 0 4px; }
+    input[type="range"] { width: 100%; }
+    select, button, input[type="file"] { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; }
+    button { cursor: pointer; }
+    .mini { font-size: 12px; opacity: .85; }
+    .stats { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: rgba(127,127,127,.08); padding: 10px; border-radius: 8px; }
+    .warn { color: #b00020; font-weight: 600; opacity: 1; }
+    .ok { color: #0b6b2a; font-weight: 600; opacity: 1; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(127,127,127,.35); font-size: 12px; margin-right: 6px; }
+    .hint ul { margin: 8px 0 0 18px; }
+    .hint li { margin: 5px 0; }
+    .footer { font-size: 12px; opacity: .8; margin-top: 10px; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border: 1px solid rgba(127,127,127,.35); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; }
+  </style>
+</head>
+<body>
+  <h1>Histogram Lab</h1>
+
+  <div class="grid" style="margin-top: 12px;">
+    <div class="card" id="leftPanel">
+      <div class="row">
+        <div>
+          <div class="pill">ภาพต้นฉบับ</div>
+          <canvas id="cOriginal" width="560" height="420"></canvas>
+        </div>
+        <div>
+          <div class="pill">ภาพหลังปรับค่า</div>
+          <canvas id="cProcessed" width="560" height="420"></canvas>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px;" class="row">
+        <div>
+          <label>อัปโหลดภาพ (PNG/JPG)</label>
+          <input type="file" id="fileInput" accept="image/png,image/jpeg" />
+          <div id="status" class="mini" style="margin-top:6px;"></div>
+          <div class="mini" style="margin-top:6px;">
+            หมายเหตุ: เพื่อความเร็ว ระบบจะย่อภาพให้ด้านยาวสุด ≤ 768 px ก่อนคำนวณฮิสโตแกรม
+          </div>
+        </div>
+        <div>
+          <label>สร้างภาพตัวอย่าง (เพื่อสาธิตทันที)</label>
+          <select id="demoSelect">
+            <option value="none">— เลือกภาพตัวอย่าง —</option>
+            <option value="gradient">Gradient (ช่วงเต็ม 0–255)</option>
+            <option value="lowcontrast">Low contrast (กระจุกกลาง)</option>
+            <option value="underexposed">Underexposed (กระจุกซ้าย)</option>
+            <option value="overexposed">Overexposed (กระจุกขวา)</option>
+            <option value="bimodal">Bimodal (สองพีค)</option>
+            <option value="noise">Uniform noise</option>
+            <option value="shapes">Shapes (พื้นหลัง + วัตถุสว่าง)</option>
+          </select>
+          <button id="btnLoadDemo" style="margin-top:8px;">โหลดภาพตัวอย่าง</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 12px;">
+        <div class="card" style="padding: 10px;">
+          <div class="pill">การปรับภาพ (ทำให้เห็นผลบน histogram)</div>
+
+          <label>Brightness (ความสว่าง) <span class="mini" id="lblB"></span></label>
+          <input type="range" id="rngBrightness" min="-100" max="100" value="0"/>
+
+          <label>Contrast (คอนทราสต์) <span class="mini" id="lblC"></span></label>
+          <input type="range" id="rngContrast" min="-100" max="100" value="0"/>
+
+          <label>Gamma <span class="mini" id="lblG"></span></label>
+          <input type="range" id="rngGamma" min="10" max="500" value="100"/>
+          <div class="mini">Gamma = 1.0 คือไม่เปลี่ยน • &lt;1 ทำให้สว่างขึ้นในโทนมืด • &gt;1 ทำให้มืดลงในโทนมืด</div>
+
+          <label>Quantize levels (จำลอง GIF/การลดระดับ) <span class="mini" id="lblQ"></span></label>
+          <input type="range" id="rngQuant" min="2" max="256" value="256"/>
+
+          <label>Invert</label>
+          <select id="selInvert">
+            <option value="0">ไม่กลับค่า</option>
+            <option value="1">กลับค่า (255 - I)</option>
+          </select>
+
+          <button id="btnReset" style="margin-top:10px;">รีเซ็ตการปรับทั้งหมด</button>
+        </div>
+
+        <div class="card" style="padding: 10px;">
+          <div class="pill">โหมดฮิสโตแกรม</div>
+
+          <label>โหมดแสดงผล</label>
+          <select id="selMode">
+            <option value="luma">Luminance (แปลงเป็นเทาแบบถ่วงน้ำหนัก)</option>
+            <option value="gray_avg">Grayscale (เฉลี่ย R,G,B แบบง่าย เพื่อเปรียบเทียบ)</option>
+            <option value="r">Channel: R</option>
+            <option value="g">Channel: G</option>
+            <option value="b">Channel: B</option>
+            <option value="rgb">Overlay: R+G+B</option>
+          </select>
+
+          <label>จำนวน bins <span class="mini" id="lblBins"></span></label>
+          <input type="range" id="rngBins" min="16" max="256" value="256"/>
+
+          <label>สเกลแกนตั้ง</label>
+          <select id="selScale">
+            <option value="linear">Linear</option>
+            <option value="log">Log10(count+1)</option>
+          </select>
+
+          <label>แสดง Cumulative Histogram</label>
+          <select id="selCum">
+            <option value="0">ไม่แสดง</option>
+            <option value="1">แสดง (เส้นสะสม)</option>
+          </select>
+
+          <div class="mini" style="margin-top:10px;">
+            เคล็ดลับ: สเกล <span class="kbd">Log</span> ช่วยให้เห็นแท่งที่มีจำนวนน้อยแต่มีความหมายได้ชัดขึ้น
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card" id="rightPanel">
+      <div class="pill">Histogram</div>
+      <canvas id="cHist" width="1120" height="360"></canvas>
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <div class="pill">สถิติ</div>
+          <div id="stats" class="stats">ยังไม่ได้โหลดภาพ</div>
+        </div>
+        <div class="hint">
+          <div class="pill">แนวทางตีความ</div>
+          <ul>
+            <li><b>กระจุกซ้าย</b> (ค่าต่ำมาก) มักสื่อถึงภาพมืด/underexposed และอาจเกิด <i>clipping</i> ที่ 0</li>
+            <li><b>กระจุกขวา</b> (ค่าสูงมาก) มักสื่อถึงภาพสว่าง/overexposed และอาจเกิด <i>clipping</i> ที่ 255</li>
+            <li><b>กระจุกแคบ</b> บ่งชี้ไดนามิกเรนจ์จำกัด/คอนทราสต์ต่ำ</li>
+            <li><b>Gaps</b> (ช่องว่าง) มักเกิดจากการเพิ่มคอนทราสต์หรือการแมประดับโทนแบบไม่ต่อเนื่อง</li>
+            <li><b>Spikes</b> (ยอดแหลม) มักเกิดจากการลดคอนทราสต์หรือการควอนไทซ์/ลดจำนวนระดับ</li>
+            <li><b>Histogram</b> ไม่เก็บ “ตำแหน่ง” ของพิกเซล: ภาพคนละรูปสามารถมี histogram เหมือนกันได้</li>
+            <li><b>Clipping (การตัดค่า) </b>: ถ้าค่าที่คำนวณได้ ต่ำกว่า 0 (เช่น −10) จะถูกบันทึกเป็น 0 ถ้าค่าที่คำนวณได้ สูงกว่า 255 (เช่น 270) จะถูกบันทึกเป็น 255</li>
+            <li><b>Grey scale </b> = (R+G+B)/3</li>
+            <li><b>Luminance</b>≈ 0.2126R+0.7152G+0.0722B</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const cO = document.getElementById('cOriginal');
+  const cP = document.getElementById('cProcessed');
+  const cH = document.getElementById('cHist');
+  const octx = cO.getContext('2d', { willReadFrequently: true });
+  const pctx = cP.getContext('2d', { willReadFrequently: true });
+  const hctx = cH.getContext('2d');
+
+  const fileInput = document.getElementById('fileInput');
+  const statusEl = document.getElementById('status');
+  const demoSelect = document.getElementById('demoSelect');
+  const btnLoadDemo = document.getElementById('btnLoadDemo');
+  const btnReset = document.getElementById('btnReset');
+
+  const rngBrightness = document.getElementById('rngBrightness');
+  const rngContrast = document.getElementById('rngContrast');
+  const rngGamma = document.getElementById('rngGamma');
+  const rngQuant = document.getElementById('rngQuant');
+  const selInvert = document.getElementById('selInvert');
+
+  const selMode = document.getElementById('selMode');
+  const rngBins = document.getElementById('rngBins');
+  const selScale = document.getElementById('selScale');
+  const selCum = document.getElementById('selCum');
+
+  const lblB = document.getElementById('lblB');
+  const lblC = document.getElementById('lblC');
+  const lblG = document.getElementById('lblG');
+  const lblQ = document.getElementById('lblQ');
+  const lblBins = document.getElementById('lblBins');
+  const statsDiv = document.getElementById('stats');
+
+  let original = null; // ImageData
+
+  function setStatus(msg, kind){
+    if(!statusEl) return;
+    statusEl.textContent = msg || '';
+    statusEl.className = 'mini' + (kind === 'error' ? ' warn' : (kind === 'ok' ? ' ok' : ''));
+  }
+
+  // Show runtime errors as a visible message
+  window.addEventListener('error', (e) => {
+    setStatus(`เกิดข้อผิดพลาดในสคริปต์: ${e.message}`, 'error');
+  });
+
+  function clamp255(x) { return x < 0 ? 0 : (x > 255 ? 255 : x); }
+
+  function setLabels(){
+    lblB.textContent = `(${parseInt(rngBrightness.value,10)})`;
+    lblC.textContent = `(${parseInt(rngContrast.value,10)})`;
+    lblG.textContent = `(${(parseInt(rngGamma.value,10)/100).toFixed(2)})`;
+    lblQ.textContent = `(${parseInt(rngQuant.value,10)} levels)`;
+    lblBins.textContent = `(${parseInt(rngBins.value,10)} bins)`;
+  }
+
+  function contrastFactor(contrast100){
+    const c = Math.round(contrast100 * 2.55); // [-255..255]
+    return (259 * (c + 255)) / (255 * (259 - c));
+  }
+
+  function safePutImageData(ctx, imgData){
+    try {
+      ctx.putImageData(imgData, 0, 0);
+      return true;
+    } catch(err){
+      setStatus('ไม่สามารถวาด ImageData ลง canvas ได้ (เบราว์เซอร์อาจจำกัดการเข้าถึงพิกเซล)', 'error');
+      return false;
+    }
+  }
+
+  function drawToFit(canvas, ctx, imgData){
+    canvas.width = imgData.width;
+    canvas.height = imgData.height;
+    safePutImageData(ctx, imgData);
+  }
+
+  function computeChannelValue(r,g,b, mode){
+    if(mode === 'r') return r;
+    if(mode === 'g') return g;
+    if(mode === 'b') return b;
+    if(mode === 'gray_avg') return Math.round((r+g+b)/3);
+    // Luminance (weighted)
+    return Math.round(0.299*r + 0.587*g + 0.114*b);
+  }
+
+  function histogram1D(imgData, bins, mode){
+    const K = 256;
+    const counts = new Float64Array(bins);
+    const data = imgData.data;
+    for(let i=0;i<data.length;i+=4){
+      const v = computeChannelValue(data[i], data[i+1], data[i+2], mode);
+      const j = Math.min(bins-1, Math.floor(v * bins / K));
+      counts[j] += 1;
+    }
+    return counts;
+  }
+
+  function histogramRGB(imgData, bins){
+    const K = 256;
+    const rC = new Float64Array(bins);
+    const gC = new Float64Array(bins);
+    const bC = new Float64Array(bins);
+    const data = imgData.data;
+    for(let i=0;i<data.length;i+=4){
+      const r = data[i], g = data[i+1], b = data[i+2];
+      rC[Math.min(bins-1, Math.floor(r * bins / K))] += 1;
+      gC[Math.min(bins-1, Math.floor(g * bins / K))] += 1;
+      bC[Math.min(bins-1, Math.floor(b * bins / K))] += 1;
+    }
+    return {rC, gC, bC};
+  }
+
+  function cumulativeFrom(counts){
+    const cum = new Float64Array(counts.length);
+    let s = 0;
+    for(let i=0;i<counts.length;i++){
+      s += counts[i];
+      cum[i] = s;
+    }
+    return cum;
+  }
+
+  function drawAxes(){
+    hctx.clearRect(0,0,cH.width,cH.height);
+    hctx.save();
+    hctx.strokeStyle = 'rgba(127,127,127,.55)';
+    hctx.lineWidth = 1;
+    hctx.strokeRect(40, 16, cH.width-56, cH.height-56);
+    const left = 40, top = 16, w = cH.width-56, h = cH.height-56;
+    hctx.fillStyle = 'rgba(255,255,255,.9)';
+    hctx.font = '18px system-ui';
+    hctx.fillText('0', left-4, top+h+18);
+    hctx.fillText('255', left+w-22, top+h+20);
+    hctx.fillText('Count', 8, top+12);
+    hctx.fillText('Intensity', left+w/2 - 26, top+h+34);
+    hctx.restore();
+  }
+
+  function drawBars(counts, opts){
+    const {scale, color, alpha} = opts;
+    const left = 40, top = 16, w = cH.width-56, h = cH.height-56;
+    const n = counts.length;
+    let maxV = 0;
+    const scaled = new Float64Array(n);
+    for(let i=0;i<n;i++){
+      const v = counts[i];
+      const sv = (scale === 'log') ? Math.log10(v + 1) : v;
+      scaled[i] = sv;
+      if(sv > maxV) maxV = sv;
+    }
+    const barW = w / n;
+
+    hctx.save();
+    hctx.globalAlpha = alpha ?? 1;
+    hctx.fillStyle = color ?? 'rgba(80,130,220,.9)';
+    for(let i=0;i<n;i++){
+      const bh = maxV > 0 ? (scaled[i]/maxV)*h : 0;
+      const x = left + i*barW;
+      const y = top + (h - bh);
+      hctx.fillRect(x, y, Math.max(1, barW*0.95), bh);
+    }
+    hctx.restore();
+  }
+
+  function drawCumulative(cum, opts){
+    const {color, alpha} = opts;
+    const left = 40, top = 16, w = cH.width-56, h = cH.height-56;
+    const n = cum.length;
+    const maxV = cum[n-1] || 1;
+
+    hctx.save();
+    hctx.strokeStyle = color ?? 'rgba(255,140,0,.95)';
+    hctx.globalAlpha = alpha ?? 1;
+    hctx.lineWidth = 2;
+    hctx.beginPath();
+    for(let i=0;i<n;i++){
+      const x = left + (i/(n-1))*w;
+      const y = top + (h - (cum[i]/maxV)*h);
+      if(i===0) hctx.moveTo(x,y); else hctx.lineTo(x,y);
+    }
+    hctx.stroke();
+    hctx.restore();
+  }
+
+  function percentileFromHist(hist, total, p){
+    const target = p * (total - 1);
+    let acc = 0;
+    for(let v=0; v<256; v++){
+      acc += hist[v];
+      if(acc > target) return v;
+    }
+    return 255;
+  }
+
+  function computeStats(imgData){
+    const mode = selMode.value === 'rgb' ? 'luma' : selMode.value;
+    const data = imgData.data;
+    const nPix = imgData.width * imgData.height;
+
+    let minV = 255, maxV = 0;
+    let sum = 0;
+    let clip0 = 0, clip255 = 0;
+    const full = new Uint32Array(256);
+
+    for(let i=0;i<data.length;i+=4){
+      const v = computeChannelValue(data[i], data[i+1], data[i+2], mode);
+      sum += v;
+      if(v < minV) minV = v;
+      if(v > maxV) maxV = v;
+      if(v === 0) clip0++;
+      if(v === 255) clip255++;
+      full[v] += 1;
+    }
+
+    const mean = sum / nPix;
+
+    // median from full histogram
+    let acc = 0;
+    const mid = (nPix - 1) / 2;
+    let median = 0;
+    for(let v=0; v<256; v++){
+      acc += full[v];
+      if(acc > mid){ median = v; break; }
+    }
+
+    const p5 = percentileFromHist(full, nPix, 0.05);
+    const p95 = percentileFromHist(full, nPix, 0.95);
+
+    return { w: imgData.width, h: imgData.height, nPix, minV, maxV, mean, median, p5, p95, clip0, clip255 };
+  }
+
+  function updateStats(stats){
+    const clip0p = (stats.clip0 / stats.nPix) * 100;
+    const clip255p = (stats.clip255 / stats.nPix) * 100;
+    const warn0 = clip0p > 0.5;
+    const warn255 = clip255p > 0.5;
+
+    const modeLabel = ({
+      luma: 'Luminance (ถ่วงน้ำหนัก)',
+      gray_avg: 'Grayscale (เฉลี่ยง่าย)',
+      r: 'Channel R',
+      g: 'Channel G',
+      b: 'Channel B',
+      rgb: 'RGB overlay'
+    })[selMode.value] || selMode.value;
+
+    const lines = [];
+    lines.push(`Mode: ${modeLabel}`);
+    lines.push(`Size: ${stats.w} × ${stats.h}  (pixels=${stats.nPix.toLocaleString()})`);
+    lines.push(`Min/Max: ${stats.minV} / ${stats.maxV}`);
+    lines.push(`Mean: ${stats.mean.toFixed(2)}   Median: ${stats.median}`);
+    lines.push(`P5 / P95: ${stats.p5} / ${stats.p95}  (ใช้ดูช่วงค่ากลางของข้อมูล)`);
+    lines.push(`Clipping at 0:   ${stats.clip0.toLocaleString()} px (${clip0p.toFixed(2)}%) ${warn0 ? '⚠️' : ''}`);
+    lines.push(`Clipping at 255: ${stats.clip255.toLocaleString()} px (${clip255p.toFixed(2)}%) ${warn255 ? '⚠️' : ''}`);
+    lines.push('');
+    lines.push((warn0 || warn255)
+      ? 'ข้อสังเกต: มีแนวโน้มเกิด clipping (ข้อมูลบางส่วนอาจสูญหายถาวรในขั้นรับภาพ/สแกน)'
+      : 'ข้อสังเกต: ไม่พบ clipping เด่นชัดในระดับเกณฑ์สาธิต');
+
+    // IMPORTANT FIX: use an escaped newline, not a literal line-break inside quotes
+    statsDiv.textContent = lines.join('\n');
+  }
+
+  function updateHistogram(imgData){
+    if(!imgData) return;
+    const bins = parseInt(rngBins.value,10);
+    const scale = selScale.value;
+    const showCum = selCum.value === '1';
+    const mode = selMode.value;
+
+    cH.width = 1120;
+    cH.height = 500;
+    drawAxes();
+
+    const barColor = {
+      r: 'rgba(255, 0, 0, 0.95)',
+      g: 'rgba(0, 255, 0, 0.95)',
+      b: 'rgba(0, 0, 255, 0.95)',
+    };
+
+    const cumColor = 'rgba(255,140,0,.95)';
+
+    if (mode === 'rgb') {
+      const { rC, gC, bC } = histogramRGB(imgData, bins);
+
+      drawBars(rC, { scale, color: 'rgba(255,0,0,.55)', alpha: 1 });
+      drawBars(gC, { scale, color: 'rgba(0,255,0,.55)', alpha: 1 });
+      drawBars(bC, { scale, color: 'rgba(0,0,250,.55)', alpha: 1 });
+
+      if (showCum) {
+        const l = histogram1D(imgData, bins, 'luma');
+        drawCumulative(cumulativeFrom(l), { color: 'rgba(255,140,0,.9)', alpha: 1 });
+      }
+
+    } else {
+      const counts = histogram1D(imgData, bins, mode);
+      const color = barColor[mode] ?? 'rgba(177, 0, 255, 0.95)';
+
+      drawBars(counts, { scale, color, alpha: 1 });
+      if (showCum) drawCumulative(cumulativeFrom(counts), { color: cumColor, alpha: 1 });
+    }
+
+    updateStats(computeStats(imgData));
+  }
+
+  function applyAdjustments(){
+    if(!original) return;
+
+    const b = parseInt(rngBrightness.value,10);
+    const cf = contrastFactor(parseInt(rngContrast.value,10));
+    const gamma = parseInt(rngGamma.value,10) / 100;
+    const inv = selInvert.value === '1';
+    const qLevels = parseInt(rngQuant.value,10);
+
+    const out = pctx.createImageData(original.width, original.height);
+    const src = original.data;
+    const dst = out.data;
+
+    // Precompute gamma LUT
+    const lut = new Uint8ClampedArray(256);
+    for(let i=0;i<256;i++){
+      const x = i / 255;
+      const y = Math.pow(x, 1/gamma);
+      lut[i] = clamp255(Math.round(255*y));
+    }
+
+    function quantize(v){
+      if(qLevels >= 256) return v;
+      const step = 255 / (qLevels - 1);
+      return clamp255(Math.round(Math.round(v / step) * step));
+    }
+
+    for(let i=0;i<src.length;i+=4){
+      let r = src[i], g = src[i+1], bl = src[i+2], a = src[i+3];
+
+      // Contrast + brightness
+      r = clamp255(Math.round(cf * (r - 128) + 128 + b));
+      g = clamp255(Math.round(cf * (g - 128) + 128 + b));
+      bl = clamp255(Math.round(cf * (bl - 128) + 128 + b));
+
+      // Gamma
+      r = lut[r]; g = lut[g]; bl = lut[bl];
+
+      // Invert
+      if(inv){ r = 255 - r; g = 255 - g; bl = 255 - bl; }
+
+      // Quantize
+      r = quantize(r); g = quantize(g); bl = quantize(bl);
+
+      dst[i] = r; dst[i+1] = g; dst[i+2] = bl; dst[i+3] = a;
+    }
+
+    cP.width = original.width;
+    cP.height = original.height;
+    safePutImageData(pctx, out);
+
+    drawToFit(cO, octx, original);
+    drawToFit(cP, pctx, out);
+
+    updateHistogram(out);
+  }
+
+  function loadImageToOriginal(img){
+    const maxSide = 768;
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if(!w || !h){
+      setStatus('ไม่สามารถอ่านขนาดรูปได้ (ไฟล์อาจไม่รองรับ)', 'error');
+      return;
+    }
+    const scale = Math.min(1, maxSide / Math.max(w,h));
+    w = Math.max(1, Math.round(w*scale));
+    h = Math.max(1, Math.round(h*scale));
+
+    cO.width = w;
+    cO.height = h;
+    octx.clearRect(0,0,w,h);
+    octx.drawImage(img, 0, 0, w, h);
+
+    try {
+      original = octx.getImageData(0,0,w,h);
+    } catch(err){
+      original = null;
+      setStatus(
+        'ภาพถูกโหลดแล้ว แต่เบราว์เซอร์บล็อกการอ่านพิกเซล (getImageData) ทำให้คำนวณ histogram ไม่ได้ — แนะนำเปิดไฟล์นี้ใน Chrome/Edge บนคอม หรือเปิดผ่านเว็บเซิร์ฟเวอร์ (http://localhost) แทนการเปิดแบบ file://',
+        'error'
+      );
+      return;
+    }
+
+    cP.width = w;
+    cP.height = h;
+    safePutImageData(pctx, original);
+
+    setStatus(`โหลดสำเร็จ: ${w}×${h}px`, 'ok');
+    applyAdjustments();
+  }
+
+  function loadImageFromFile(file){
+    if(!file){ setStatus('ไม่พบไฟล์', 'error'); return; }
+
+    const type = (file.type || '').toLowerCase();
+    if(type && !(type.includes('jpeg') || type.includes('jpg') || type.includes('png'))){
+      setStatus('ไฟล์นี้ไม่ใช่ PNG/JPEG หรือเบราว์เซอร์อาจไม่รองรับ (เช่น HEIC) — กรุณาแปลงเป็น JPG/PNG แล้วลองใหม่', 'error');
+      return;
+    }
+
+    setStatus(`กำลังอ่านไฟล์: ${file.name} (${Math.round(file.size/1024)} KB) ...`);
+
+    const reader = new FileReader();
+    reader.onerror = () => setStatus('อ่านไฟล์ไม่สำเร็จ (FileReader error)', 'error');
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => loadImageToOriginal(img);
+      img.onerror = () => setStatus('เบราว์เซอร์ไม่สามารถถอดรหัสไฟล์รูปนี้ได้ — หากเป็น HEIC/รูปจากมือถือ ให้แปลงเป็น JPG/PNG', 'error');
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function generateDemo(type){
+    const w = 640, h = 420;
+    const img = octx.createImageData(w,h);
+    const d = img.data;
+
+    function put(x,y,r,g,b,a=255){
+      const i = (y*w + x)*4;
+      d[i]=r; d[i+1]=g; d[i+2]=b; d[i+3]=a;
+    }
+
+    if(type === 'gradient'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const v = Math.round((x/(w-1))*255);
+        put(x,y,v,v,v,255);
+      }
+    } else if(type === 'lowcontrast'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const v = clamp255(Math.round(128 + 18*Math.sin(x/24) + 18*Math.cos(y/31)));
+        put(x,y,v,v,v,255);
+      }
+    } else if(type === 'underexposed'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const base = Math.round((x/(w-1))*120);
+        const v = clamp255(base + Math.round(12*Math.sin(y/14)));
+        put(x,y,v,v,v,255);
+      }
+      for(let y=0;y<h;y+=3) for(let x=0;x<w;x+=7) put(x,y,0,0,0,255);
+    } else if(type === 'overexposed'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const base = Math.round(135 + (x/(w-1))*120);
+        const v = clamp255(base + Math.round(12*Math.cos(y/14)));
+        put(x,y,v,v,v,255);
+      }
+      for(let y=0;y<h;y+=3) for(let x=0;x<w;x+=7) put(x,y,255,255,255,255);
+    } else if(type === 'bimodal'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const leftHalf = x < w/2;
+        const v = leftHalf
+          ? clamp255(Math.round(55 + 10*Math.sin((x+y)/18)))
+          : clamp255(Math.round(200 + 10*Math.cos((x-y)/21)));
+        put(x,y,v,v,v,255);
+      }
+    } else if(type === 'noise'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const v = Math.floor(Math.random()*256);
+        put(x,y,v,v,v,255);
+      }
+    } else if(type === 'shapes'){
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++) put(x,y,90,90,110,255);
+      const cx = Math.round(w*0.35), cy = Math.round(h*0.55), r0 = Math.round(Math.min(w,h)*0.18);
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+        const dx = x-cx, dy = y-cy;
+        if(dx*dx + dy*dy <= r0*r0){
+          const v = clamp255(210 + Math.round(25*Math.sin(dx/8)));
+          put(x,y,v,v,230,255);
+        }
+      }
+      for(let y=Math.round(h*0.2); y<Math.round(h*0.45); y++){
+        for(let x=Math.round(w*0.6); x<Math.round(w*0.9); x++){
+          put(x,y,25,35,30,255);
+        }
+      }
+      for(let y=Math.round(h*0.75); y<Math.round(h*0.85); y++){
+        for(let x=0; x<w; x++){
+          const rr = clamp255(Math.round((x/(w-1))*255));
+          const gg = clamp255(Math.round(255 - (x/(w-1))*255));
+          put(x,y,rr,gg,60,255);
+        }
+      }
+    } else {
+      return null;
+    }
+
+    return img;
+  }
+
+  function loadDemo(){
+    const type = demoSelect.value;
+    if(type === 'none') return;
+    const demo = generateDemo(type);
+    if(!demo) return;
+    original = demo;
+    setStatus(`โหลดภาพตัวอย่างสำเร็จ: ${demo.width}×${demo.height}px`, 'ok');
+    applyAdjustments();
+  }
+
+  function resetAll(){
+    rngBrightness.value = 0;
+    rngContrast.value = 0;
+    rngGamma.value = 100;
+    rngQuant.value = 256;
+    selInvert.value = '0';
+    selScale.value = 'linear';
+    selCum.value = '0';
+    rngBins.value = 256;
+    selMode.value = 'luma';
+    setLabels();
+    if(original) applyAdjustments();
+  }
+
+  // ===== Self-tests (run once at startup) =====
+  function runSelfTests(){
+    // Test 1: generate gradient and confirm histogram sums to pixel count
+    const demo = generateDemo('gradient');
+    console.assert(demo && demo.data && demo.data.length === demo.width*demo.height*4, 'SelfTest: demo imageData shape');
+
+    const bins = 256;
+    const h1 = histogram1D(demo, bins, 'luma');
+    const total = h1.reduce((a,b)=>a+b, 0);
+    console.assert(total === demo.width*demo.height, 'SelfTest: histogram pixel count matches');
+
+    // Test 2: stats do not contain NaN
+    const st = computeStats(demo);
+    console.assert(Number.isFinite(st.mean), 'SelfTest: mean is finite');
+    console.assert(st.minV >= 0 && st.maxV <= 255, 'SelfTest: min/max in range');
+  }
+
+  // Listeners
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    // allow choosing the same file again
+    e.target.value = '';
+    if(f) loadImageFromFile(f);
+  });
+
+  btnLoadDemo.addEventListener('click', () => loadDemo());
+  btnReset.addEventListener('click', () => resetAll());
+
+  [
+    rngBrightness, rngContrast, rngGamma, rngQuant,
+    selInvert, selMode, rngBins, selScale, selCum
+  ].forEach(el => {
+    el.addEventListener('input', () => { setLabels(); applyAdjustments(); });
+    el.addEventListener('change', () => { setLabels(); applyAdjustments(); });
+  });
+
+  setLabels();
+  cH.width = 1120;
+  cH.height = 360;
+  drawAxes();
+  runSelfTests();
+  setStatus('พร้อมใช้งาน: อัปโหลด PNG/JPG หรือโหลดภาพตัวอย่าง', '');
+})();
+</script>
+</body>
+</html>
